@@ -1,0 +1,47 @@
+{
+	"info": {
+		"_postman_id": "9ed138e3-bd94-4870-bb70-43f6125254bf",
+		"name": "carsome API",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "referrals created",
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n    \"fields\":{\r\n        \"commission\":{\"stringValue\":\"8638\"},\r\n        \"conversion\":{\"stringValue\":\"4\"},\r\n        \"createdAt\":{\"timestampValue\":\"2016-11-02T15:01:23.045123456Z\"},\r\n        \"ref1\":{\"stringValue\":\"skoda\"},\r\n        \"ref2\":{\"stringValue\":\"supra\"},\r\n        \"clicks\":{\"stringValue\":\"6123\"},\r\n        \"campaign\":{\"stringValue\":\"B2C Reg\"}\r\n    }\r\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "https://firestore.googleapis.com/v1/projects/projectambassador-prod/databases/(default)/documents/users/uAilx6aQO2PcxOPe99kSH3jKcnN2/referrals",
+					"protocol": "https",
+					"host": [
+						"firestore",
+						"googleapis",
+						"com"
+					],
+					"path": [
+						"v1",
+						"projects",
+						"projectambassador-prod",
+						"databases",
+						"(default)",
+						"documents",
+						"users",
+						"uAilx6aQO2PcxOPe99kSH3jKcnN2",
+						"referrals"
+					]
+				},
+				"description": "**Credentials for testing**\n\nUID: uAilx6aQO2PcxOPe99kSH3jKcnN2  \nproject_ID: projectambassador-prod\n\nURL is consist of  \n[https://firestore.googleapis.com/v1/projects/{project_ID}/databases/(default)/documents/users/{UID}/referrals](https://firestore.googleapis.com/v1/projects/{project_ID}/databases/(default)/documents/users/{UID}/referrals)\n\neach user have it's unique uid and this API will add the following document in referrals collection of a user with matching UID"
+			},
+			"response": []
+		}
+	]
+}
