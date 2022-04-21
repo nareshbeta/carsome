@@ -1,15 +1,19 @@
-import React from 'react'
+import React, { useEffect } from 'react'
 import { useState,useContext } from 'react';
 import styled from 'styled-components'
-import logo from "../../assets/images/Logo.png"
+import logoDark from "../../assets/images/logo-dark.svg"
 import Button from '../button.components';
-import { BLACK, BTN_BORDER, BTN_TRANS } from '../../constants/style.contstants'
+import { BLACK, BLUE, BTN_BORDER, BTN_TRANS } from '../../constants/style.contstants'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faBars,faXmark } from '@fortawesome/free-solid-svg-icons'
-import Auth from '../auth.component';
 import { UserContext } from '../../context/user.context';
-import { signOutUser } from '../../utils/firebase.utils';
+import { signOutUser,signInWithGooglePopup } from '../../utils/firebase.utils';
 import { PENDING, REQUEST_FAILED, REQUEST_PENDING, REQUEST_SUCCESS } from '../../constants/transaction.constants';
+import { _isNotEmpty } from '../../utils/validations.utils';
+import Dropdown from '../dropdown.components';
+import { MYR, currencyList } from '../../utils/exchange-rates.utils';
+import { CurrencyContext } from '../../context/currency.context';
+import { fetchExchangeRateFromMYRto } from '../../utils/exchange-rates.utils';
 
 const Style = styled.header`
 nav{
@@ -32,9 +36,10 @@ nav>.container{
     font-size:1.3em;
     cursor:pointer;
     display:none;
+    margin-left:15px;
   }
   #logo{
-    height:50px;
+    height:20px;
   }
   &>div{
     display:flex;
@@ -48,9 +53,6 @@ nav>.container{
     & .btn-cont{
       margin-left:1rem;
     }
-    #login-btn .btn:hover{
-      color:${BLACK}
-    }
   }
   .nav-menu{
     display:flex;
@@ -59,6 +61,11 @@ nav>.container{
     list-style-type:none;
     &>li{
       margin:0 10px;
+      &>.btn-cont{
+        display:flex;
+        justify-content:center;
+        align-items:center;
+      }
       .btn{
         padding: 0 0.5em;
         font-weight:300;
@@ -94,7 +101,7 @@ nav>.container{
   z-index:1003;
   background:white;
   height:100vh;
-  width:200px;
+  width:220px;
   border-right:1px solid #f1f1f1;
   padding:40px 30px;
   transition:0.3s ease;
@@ -118,9 +125,13 @@ nav>.container{
     &>li {
       margin-bottom:0.5rem;
       .btn{
-        padding:0;
         font-weight:300;
       }
+    }
+  }
+  .menu{
+    .btn{
+      padding:0;
     }
   }
   
@@ -129,28 +140,48 @@ nav>.container{
 
 const Header = () => {
   const [isOpen,setOpen] = useState(false);
-  const [isAuthOpen,setIsAuthOpen] = useState({
-    state:false,
-    signIn:false
-  })
-  const [signOutRequest,setSignOutRequest] = useState(REQUEST_SUCCESS());
-  const {currentUser} = useContext(UserContext);
-  const handleAuthOpenForSignIn = (res) => {
-      setIsAuthOpen({
-        state:true,
-        signIn:res
-      })
-  }
+  const {currentUser,setCurrentUser} = useContext(UserContext);
+  const {currentCurrency, setCurrentCurrency} = useContext(CurrencyContext);
+
   const signOutHandler = async () => {
     try{
-      setSignOutRequest( REQUEST_PENDING() );
+      setCurrentUser( REQUEST_PENDING() );
       await signOutUser();
-      setSignOutRequest( REQUEST_SUCCESS() );
+      setCurrentUser( REQUEST_SUCCESS() );
     }
     catch(e){
-      setSignOutRequest( REQUEST_FAILED(e.message) )
+      setCurrentUser( REQUEST_FAILED(e.message) )
       console.log(e.message)
     }
+  }
+  const logGoogleUser = async () => {
+    try{
+      setCurrentUser( REQUEST_PENDING() );
+      await signInWithGooglePopup();
+      setOpen(false)
+    }
+    catch(e){
+      setCurrentUser( REQUEST_FAILED(e.message) );
+    }
+}
+
+  const changeCurrencyTo = async (e) => {
+    try{
+        setCurrentCurrency((curr) => REQUEST_PENDING(curr.data) );
+        const exchangeRate = await fetchExchangeRateFromMYRto(e.value);
+        setCurrentCurrency( REQUEST_SUCCESS({
+          iso:e.value,
+          symbol:e.symbol,
+          rate:exchangeRate
+        }) );
+        return true;
+    }
+    catch(e){
+        console.log(e);
+        setCurrentCurrency((curr) => REQUEST_FAILED(e.message,curr.data))
+        return false;
+    }
+
   }
   return (
     <Style isOpen={isOpen}>
@@ -158,14 +189,14 @@ const Header = () => {
           <div className='container'>
             <div className='left-nav'>
               <div className="img contain" id="logo">
-                <img src={logo} alt="carsome logo"/>
+                <img src={logoDark} alt="carsome logo"/>
               </div>
               {
-                currentUser&&(
+                (_isNotEmpty( currentUser.data ))&&(
                   <ul className="nav-menu">
-                    <li>
+                    {/* <li>
                       <Button to="/" looks={BTN_TRANS} color={BLACK}>Home</Button>
-                    </li>
+                    </li> */}
                     <li>
                       <Button to="/dashboard" looks={BTN_TRANS} color={BLACK}>Dashboard</Button>
                     </li>
@@ -175,15 +206,36 @@ const Header = () => {
 
             </div>
             <div className="right-nav">
+              {
+                (_isNotEmpty( currentUser.data ))?
+                  (
+                    <Dropdown 
+                    name="currency" 
+                    options={currencyList.map((item)=>{
+                      return {
+                        label:item.iso,
+                        value:item.iso,
+                        symbol:item.symbol
+                      }
+                    } )}
+                    defaultValue={MYR}
+                    placeholder ="Currency"
+                    handleSelect={(e)=>changeCurrencyTo(e)}
+                    isDisabled={currentCurrency.status===PENDING}
+                  />
+                  ):null
+              }
+
               <div className='sign-btns'>
                 {
-                  currentUser?
+                  (_isNotEmpty( currentUser.data ))?
                   (
-                    <Button looks={BTN_BORDER} color={BLACK} onClick={signOutHandler} isLoading={signOutRequest.status === PENDING}>Sign out</Button>  
+                    <>
+                      <Button looks={BTN_BORDER} color={BLACK} onClick={signOutHandler} isLoading={currentUser.status === PENDING} >Sign out</Button>  
+                    </>
                   ):(
                     <>
-                      <Button looks={BTN_TRANS} color={BLACK} id="login-btn" onClick={()=> handleAuthOpenForSignIn(true)}>Login</Button>
-                      <Button looks={BTN_BORDER} color={BLACK} id="signup-btn" onClick={()=> handleAuthOpenForSignIn(false)}>Sign up</Button>
+                      <Button color={BLUE} id="login-btn" onClick={()=> logGoogleUser()} isLoading={currentUser.status === PENDING}>Login with Google</Button>
                     </>
                   )
                 }
@@ -204,43 +256,39 @@ const Header = () => {
           <div className='cross-cont' onClick={()=>setOpen(false)}>
             <FontAwesomeIcon icon={faXmark} />
           </div>
-          <ul className="menu">
-                  <li>
-                    <Button to="/" looks={BTN_TRANS} color={BLACK}>Home</Button>
-                  </li>
-                  <li>
-                    <Button to="/menu-1" looks={BTN_TRANS} color={BLACK}>Menu 1</Button>
-                  </li>
-                  <li>
-                    <Button to="/menu-2" looks={BTN_TRANS} color={BLACK}>Menu 2</Button>
-                  </li>
-                  <li>
-                    <Button to="/menu-3" looks={BTN_TRANS} color={BLACK}>Menu 3</Button>
-                  </li>
-          </ul>
-          <hr/>
+            {
+                (_isNotEmpty( currentUser.data ))&&(
+                  <>
+                    <ul className="menu">
+                      {/* <li>
+                        <Button to="/" looks={BTN_TRANS} color={BLACK} onClick={()=>setOpen(false)}>Home</Button>
+                      </li> */}
+                      <li>
+                        <Button to="/dashboard" looks={BTN_TRANS} color={BLACK} onClick={()=>setOpen(false)}>Dashboard</Button>
+                      </li>
+                    </ul>
+                    <hr/>
+                  </>
+                )
+            }
+
+
           <ul className="menu-2">
                 {
-                  currentUser?
+                  (_isNotEmpty( currentUser.data ))?
                   (
                     <li>
-                      <Button looks={BTN_TRANS} color={BLACK} onClick={signOutHandler} isLoading={signOutRequest.status === PENDING}>Sign out</Button>  
+                      <Button looks={BTN_BORDER} color={BLACK} onClick={signOutHandler} isLoading={currentUser.status === PENDING} >Sign out</Button>  
                     </li>
                   ):(
-                    <>
-                        <li>
-                          <Button looks={BTN_TRANS} color={BLACK} onClick={()=> handleAuthOpenForSignIn(true)}>Login</Button>
-                        </li>
-                        <li>
-                          <Button looks={BTN_TRANS} color={BLACK} onClick={()=> handleAuthOpenForSignIn(false)}>signup</Button>
-                        </li>
-                    </>
+                    <li>
+                      <Button color={BLUE} id="login-btn" onClick={()=> logGoogleUser()} isLoading={currentUser.status === PENDING}>Login with Google</Button>
+                    </li>
                   )
                 }
                   
           </ul>
         </div>
-        <Auth open={isAuthOpen.state} isSignIn={isAuthOpen.signIn} onClose={() => setIsAuthOpen(false)}/>
         <div className='nav-dummy'></div>
     </Style>
   )

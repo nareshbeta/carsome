@@ -9,20 +9,27 @@ import {
     signOut,
     onAuthStateChanged
 } from "firebase/auth"
-import { getFirestore, doc,getDoc,setDoc,collection,onSnapshot,query } from "firebase/firestore"
+import { getFirestore, doc,getDoc,setDoc,collection,onSnapshot,query,getDocs,where, orderBy, limit } from "firebase/firestore"
+// import encodeUrl from "encodeurl";
+import { COMMISSION_CALCULATOR } from "./formula.utils";
+import axios from "axios"
+
+
 const firebaseConfig = {
 
-  apiKey: "AIzaSyCNBQMGy8X7_my2sw_MYGXfuwsZxJYa5ag",
-  authDomain: "carsome-c8058.firebaseapp.com",
-  projectId: "carsome-c8058",
-  storageBucket: "carsome-c8058.appspot.com",
-  messagingSenderId: "402850768952",
-  appId: "1:402850768952:web:689349da7ce12db5ba5ecd",
-  measurementId: "G-HBK16W24RH"
-};
+    apiKey: "AIzaSyCk8YE7ALk4xMm8BOj0CCoAJLiMshMBzHo",
+    authDomain: "projectambassador-prod.firebaseapp.com",
+    databaseURL: "https://projectambassador-prod-default-rtdb.firebaseio.com",
+    projectId: "projectambassador-prod",
+    storageBucket: "projectambassador-prod.appspot.com",
+    messagingSenderId: "5047764515",
+    appId: "1:5047764515:web:1a7c66d2b19ecc84771396"
+  
+  };
+  
 
 // Initialize Firebase
-
+const unsubscribeOnSignOut = [];
 export const app = initializeApp(firebaseConfig);
 
 const provider = new GoogleAuthProvider();
@@ -70,7 +77,15 @@ const provider = new GoogleAuthProvider();
 
     return await signInWithEmailAndPassword(auth,email,password);
 }
-export const signOutUser = () => signOut(auth)
+
+export const signOutUser = () =>{
+     unsubscribeOnSignOut.forEach((unsubscribe)=>{
+        unsubscribe();
+        console.log("unsubscribe")
+     })
+
+     signOut(auth)
+}
 
 export const onAuthStateChangedListener = (callback) =>{
    return onAuthStateChanged(auth,callback)
@@ -78,41 +93,79 @@ export const onAuthStateChangedListener = (callback) =>{
 
 
 // link generation methods
-export const createLinkDocumentForUser = async (uid,link,additionalInformation={}) => {
+export const createShortenLink = async (uid,link,additionalInformation={}) => {
 
     const {ref1,ref2} = additionalInformation;
-
-    // const userDocRef = doc(db, 'users',  uid);
-    // const createdAt = new Date();
-    // const linkDocRef = await addDoc( collection( userDocRef, "referrals" ),{
-    //     link,
-    //     createdAt,
-    //     ...additionalInformation
-    // } );
-    const utm_content = ref1||ref2? `&utm_content:${ ref1? (encodeURIComponent(ref1)(ref2?",":"")) :"" } ${ ref2? encodeURIComponent(ref2) :"" }` : "";
-    // const generatedLink = `${link}?utm_source=${encodeURIComponent(uid)}${utm_content}&utm_medium=${linkDocRef.id}`;
-    const generatedLink = `${link}?utm_source=${encodeURIComponent(uid)}${utm_content}`;
-    return generatedLink;
+    const utm_content = ref1||ref2? `&utm_content=${ ( ref1? ref1 + ( ref2?",":"" ) :"" ) + (ref2? ref2 :"") }` : "";
+    const encodedLink = encodeURIComponent(`${link}?utm_source=${uid}${utm_content}`);
+    const {data} = await axios.post("https://firebasedynamiclinks.googleapis.com/v1/shortLinks?key=AIzaSyCNBQMGy8X7_my2sw_MYGXfuwsZxJYa5ag",{
+        longDynamicLink: `https://csnow.page.link/?link=${encodedLink}`
+    })
+    if(!data||!data.shortLink){
+        throw new Error("Didn't get shorten link")
+    }
+    return data.shortLink;
 }
 
-export const onUserReferralsStateChangedListener = (uid,callback) => {
+export const onUserReferralsStateChangedListener = async (uid,callback) => {
     const q = query(collection(db, "users",uid,"referrals"));
-    return onSnapshot(q, (snapshot)=>{
+    const campToComRef = await getDocs(collection(db, "campaign"));
+    const campToCom = [];
+    campToComRef.forEach((doc) => {
+        // doc.data() is never undefined for query doc snapshots
+        const docData = doc.data();
+        campToCom.push({
+            id:doc.id,
+            ...docData
+        })
+      });
+
+    const unsubscribe = onSnapshot(q, (snapshot)=>{
         snapshot.docChanges().forEach((change)=>{
             const docObject = change.doc.data()
             callback({
                 id:change.doc.id,
                 ...docObject,
+                commission: COMMISSION_CALCULATOR(docObject,campToCom),
                 createdAt:docObject.createdAt.toDate()
             })
         })
     });
-
+    unsubscribeOnSignOut.push(unsubscribe);
 }
 
+export const fetchCommissionFromUrl = async (url) => {
+    if(!url) return {};
+    const findInUrl = [{
+        comp:"https://www.carsome.my/buy-car/",
+        key:"buy"
+    },{
+        comp:"https://www.carsome.my/sell-car/",
+        key:"sell"
+    }]
+    const keyword = findInUrl.reduce((total,curr)=>{
+        if(url.includes(curr.comp)&&!total) return curr.key;
+        return total;
+    },"")
+
+    var data = {}
+    if(keyword){
+        // limit for largest
+        const campToKeywordRef = query(collection(db, "campaign"), where("appliedTo", "==", keyword), orderBy("commission", "desc"), limit(1))
+        const docsRef =  await getDocs(campToKeywordRef);
+
+        docsRef.forEach((d)=>{
+            data = d.data()
+        })
+    }
+    return data;
+}
 export const onUserStateChangeListener = (uid,callback) => {
+    
     const q = query(doc(db, "users",uid));
-    return onSnapshot(q, (snapshot)=>{
+    const unsubscribe = onSnapshot(q, (snapshot)=>{
         callback( snapshot.data() )
     })
+    unsubscribeOnSignOut.push(unsubscribe);
 }
+
